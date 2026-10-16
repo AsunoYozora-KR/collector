@@ -78,6 +78,20 @@ button,input,textarea{font:inherit;color:inherit}
 .tmsg{font-size:12px;color:var(--ink-2);min-height:1.2em}
 .tempty{color:var(--ink-2);margin:8px 0;font-size:14px;width:100%}
 .tfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.syncbtn{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink-2);font-size:12px;cursor:pointer;white-space:nowrap}
+.syncbtn .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+.syncbtn[data-state="ok"] .dot{background:#7FC8A0}
+.syncbtn[data-state="busy"] .dot{background:var(--accent)}
+.syncbtn[data-state="error"] .dot,.syncbtn[data-state="offline"] .dot{background:var(--danger)}
+.syncbtn[data-state="error"]{color:var(--danger);border-color:var(--danger)}
+.ssheet{height:auto;max-height:100%;overflow:auto;width:min(560px,100%)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:13px;font-weight:500;color:var(--ink-2)}
+.fhint{font-size:12px;color:var(--ink-3);margin:0;line-height:1.55}
+.ferr{font-size:13px;color:var(--danger);margin:0;min-height:1.3em}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;font-size:14px;margin:0}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0;overflow-wrap:anywhere}
 .tinfo{font-size:13px;color:var(--ink-2);overflow-wrap:anywhere;min-width:0}
 .note{margin:0;font-size:13px;color:var(--danger);background:var(--danger-soft);padding:8px 12px;border-radius:8px}
 
@@ -168,12 +182,14 @@ textarea.in{resize:none;line-height:1.6}
   <header id="gridBar" class="gbar">
     <div class="row1">
       <div class="brand">인물 카드첩 <span id="count" class="count"></span></div>
+      <button id="syncBtn" class="syncbtn" type="button" data-state="off"><span class="dot" aria-hidden="true"></span><span id="syncText">동기화 꺼짐</span></button>
       <input id="q" class="search" type="search" placeholder="이름 검색 · 초성도 돼요 (ㄱㅎㄹ)" autocomplete="off" enterkeyhint="search" aria-label="이름 검색">
       <button id="tagBtn" class="btn" type="button">태그 <span id="tagBadge" class="badge" hidden></span></button>
       <button id="newBtn" class="btn primary" type="button">새 카드</button>
       <div class="menuwrap">
         <button id="menuBtn" class="btn icon" type="button" aria-label="메뉴" aria-expanded="false">⋯</button>
         <div id="menu" class="menu" hidden>
+          <button type="button" data-act="sync">동기화 설정</button>
           <button type="button" data-act="export">백업 파일로 내보내기</button>
           <button type="button" data-act="import">백업 파일 가져오기</button>
           <button type="button" data-act="seed">예시 카드 넣기</button>
@@ -216,6 +232,7 @@ textarea.in{resize:none;line-height:1.6}
 
 <div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="구분 보기"></div></div>
 <div id="tagScrim" class="scrim" hidden><div id="tagSheet" class="tsheet" role="dialog" aria-modal="true" aria-label="태그"></div></div>
+<div id="syncScrim" class="scrim" hidden><div id="syncSheet" class="tsheet ssheet" role="dialog" aria-modal="true" aria-label="동기화 설정"></div></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <input id="file" type="file" accept="image/*" hidden>
 <input id="importFile" type="file" accept="application/json,.json" hidden>
@@ -248,16 +265,17 @@ const Store = (() => {
   function open() {
     if (dbp) return dbp;
     dbp = new Promise((res, rej) => {
-      const r = indexedDB.open('person-cards', 1);
+      const r = indexedDB.open('person-cards', 2);
       r.onupgradeneeded = () => {
         const d = r.result;
-        d.createObjectStore('cards', { keyPath: 'id' });
-        d.createObjectStore('images');
-        d.createObjectStore('thumbs');
+        if (!d.objectStoreNames.contains('cards')) d.createObjectStore('cards', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('images')) d.createObjectStore('images');
+        if (!d.objectStoreNames.contains('thumbs')) d.createObjectStore('thumbs');
+        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
       };
       r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
-    }).catch(() => { mem = { cards: new Map(), images: new Map(), thumbs: new Map() }; return null; });
+    }).catch(() => { mem = { cards: new Map(), images: new Map(), thumbs: new Map(), meta: new Map() }; return null; });
     return dbp;
   }
   function run(stores, mode, fn) {
@@ -290,7 +308,10 @@ const Store = (() => {
       if (!t) { ids.forEach(i => { mem.images.delete(i); mem.thumbs.delete(i); }); return; }
       ids.forEach(i => { t.objectStore('images').delete(i); t.objectStore('thumbs').delete(i); });
     }),
-    async getBlob(kind, id) { const d = await open(); return d ? wrap(d.transaction(kind).objectStore(kind).get(id)) : (mem[kind].get(id) || null); }
+    async getBlob(kind, id) { const d = await open(); return d ? wrap(d.transaction(kind).objectStore(kind).get(id)) : (mem[kind].get(id) || null); },
+    async getMeta(k) { const d = await open(); return d ? wrap(d.transaction('meta').objectStore('meta').get(k)) : (mem.meta.get(k) ?? null); },
+    putMeta: (k, v) => run(['meta'], 'readwrite', t => t ? t.objectStore('meta').put(v, k) : mem.meta.set(k, structuredClone(v))),
+    delMeta: k => run(['meta'], 'readwrite', t => t ? t.objectStore('meta').delete(k) : mem.meta.delete(k))
   };
 })();
 
@@ -354,6 +375,7 @@ function removeImages(ids) {
   if (!ids.length) return;
   ids.forEach(Urls.drop);
   Store.deleteImages(ids).catch(() => {});
+  if (Sync.cfg) { Sync.state.pendingImages.push(...ids); saveSyncState(); }
 }
 
 /* ---------- 메모리 속 상태와 색인 ----------
@@ -418,7 +440,7 @@ function touch(c) {
 function flush(id) {
   clearTimeout(saveTimers.get(id)); saveTimers.delete(id);
   const c = S.cards.get(id);
-  return c ? Store.putCard(c).catch(() => toast('저장하지 못했어요. 기기 저장 공간을 확인해 주세요.')) : Promise.resolve();
+  return c ? Store.putCard(c).then(() => scheduleSync(4000), () => toast('저장하지 못했어요. 기기 저장 공간을 확인해 주세요.')) : Promise.resolve();
 }
 const flushAll = () => Promise.all([...saveTimers.keys()].map(flush));
 
@@ -748,6 +770,7 @@ async function deleteCard() {
   clearTimeout(saveTimers.get(c.id)); saveTimers.delete(c.id);
   try { await Store.deleteCard(c.id, ids); } catch (e) { toast('지우지 못했어요. 다시 해 보세요.'); return; }
   ids.forEach(Urls.drop);
+  if (Sync.cfg) { Sync.state.pendingCards.push(c.id); Sync.state.pendingImages.push(...ids); saveSyncState(); scheduleSync(2000); }
   removeFromIndex(c.id); S.cards.delete(c.id); resort();
   S.editing = false;
   computeVisible();
@@ -890,6 +913,294 @@ async function seedExamples() {
   toast('예시 카드 3장을 넣었어요. #예시 태그로 모아 볼 수 있어요.', 4000);
 }
 
+/* ---------- 동기화: 비공개 깃허브 레포를 원본으로 ----------
+   레포 구조
+     meta.json          암호 확인용 정보 (소금값 + 확인 문장. 카드 내용은 없음)
+     cards/<id>.bin     카드 하나 = 파일 하나 (암호화)
+     images/<id>.bin    사진 한 장 = 파일 하나 (암호화, 한 번 올리면 안 바뀜)
+   바뀐 것 찾기: 깃허브가 파일마다 붙이는 "지문(sha)"을 기억해 두고, 다른 것만 주고받음
+   충돌: 나중에 고친 쪽(updatedAt이 큰 쪽)이 이김                                      */
+const te = new TextEncoder(), td = new TextDecoder();
+const Sync = { cfg: null, key: null, state: null, running: false, again: false, timer: null, lastError: '' };
+function b64(buf) {
+  const a = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function unb64(str) { const bin = atob(String(str).replace(/\s/g, '')); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+async function deriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+}
+async function seal(bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, Sync.key, bytes));
+  const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+  return out;
+}
+async function unseal(bytes, key = Sync.key) {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12) }, key, bytes.subarray(12)));
+}
+const fail = m => { const e = new Error(m); e.userMsg = m; return e; };
+async function gh(method, path, body, cfg = Sync.cfg) {
+  const r = await fetch('https://api.github.com/repos/' + cfg.repo + path, {
+    method, cache: 'no-store',
+    headers: Object.assign({ Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!r.ok) { const e = new Error('github ' + r.status); e.status = r.status; throw e; }
+  return r.status === 204 ? null : r.json();
+}
+function explain(e) {
+  if (e && e.userMsg) return e.userMsg;
+  if (e && e.status === 401) return '열쇠(토큰)가 맞지 않거나 기간이 끝났어요. 새 열쇠를 넣어 주세요.';
+  if (e && e.status === 403) return '열쇠에 이 레포 권한이 없어요. Contents를 Read and write로 했는지 확인해 주세요.';
+  if (e && e.status === 404) return '레포를 찾을 수 없어요. 레포 이름과, 열쇠를 만들 때 고른 레포를 확인해 주세요.';
+  if (e && e.name === 'OperationError') return '데이터를 풀지 못했어요. 암호 비밀번호를 확인해 주세요.';
+  if (e && e.name === 'TypeError') return '깃허브에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.';
+  return '동기화 중 문제가 생겼어요. 잠시 뒤 다시 해 보세요.';
+}
+function saveSyncState() { if (Sync.state) Store.putMeta('state', Sync.state).catch(() => {}); }
+function setSync(state, msg) {
+  const b = $('#syncBtn'); if (!b) return;
+  b.dataset.state = state;
+  const at = Sync.state && Sync.state.lastAt ? new Date(Sync.state.lastAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+  $('#syncText').textContent = { off: '동기화 꺼짐', busy: '동기화 중…', ok: at ? `동기화됨 · ${at}` : '동기화됨', offline: '오프라인 · 나중에 올라가요', error: '동기화 문제' }[state];
+  Sync.lastError = state === 'error' ? (msg || '') : '';
+  if (!$('#syncScrim').hidden) renderSyncSheet();
+}
+function scheduleSync(ms) {
+  if (!Sync.cfg) return;
+  clearTimeout(Sync.timer);
+  Sync.timer = setTimeout(runSync, ms);
+}
+async function pool(items, n, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
+}
+const imagesOf = c => [c.mainImage, ...c.sections.map(s => s.image)].filter(Boolean);
+async function readBlob(sha) { const r = await gh('GET', '/git/blobs/' + sha); return unseal(unb64(r.content)); }
+async function writeBlob(bytes) { const r = await gh('POST', '/git/blobs', { content: b64(await seal(bytes)), encoding: 'base64' }); return r.sha; }
+function cleanCard(c) {
+  return { id: c.id, name: c.name || '이름 없음', tags: Array.isArray(c.tags) ? c.tags : [], summary: c.summary || '', mainImage: c.mainImage || null,
+    sections: (Array.isArray(c.sections) ? c.sections : []).slice(0, MAX_SECTIONS).map(s => ({ id: s.id || uid(), title: s.title || '', desc: s.desc || '', image: s.image || null })),
+    createdAt: c.createdAt || Date.now(), updatedAt: c.updatedAt || Date.now() };
+}
+async function dropLocalCard(c) {
+  const ids = imagesOf(c);
+  clearTimeout(saveTimers.get(c.id)); saveTimers.delete(c.id);
+  await Store.deleteCard(c.id, ids);
+  ids.forEach(Urls.drop);
+  removeFromIndex(c.id); S.cards.delete(c.id);
+}
+async function pull(rc, ri) {
+  const st = Sync.state, pend = new Set(st.pendingCards);
+  let changed = false;
+  for (const [id, sha] of rc) {
+    if (pend.has(id)) continue;
+    const known = st.synced[id];
+    if (known && known.sha === sha) continue;
+    const remote = cleanCard(JSON.parse(td.decode(await readBlob(sha))));
+    const local = S.cards.get(id);
+    if (local && (local.updatedAt || 0) > remote.updatedAt) { st.synced[id] = { sha, u: remote.updatedAt }; continue; }
+    const missing = [];
+    for (const imgId of imagesOf(remote)) if (ri.has(imgId) && !(await Store.getBlob('thumbs', imgId))) missing.push(imgId);
+    await pool(missing, 3, async imgId => {
+      const full = new Blob([await readBlob(ri.get(imgId))], { type: 'image/jpeg' });
+      const { im, u } = await loadImg(full);
+      try { await Store.putImage(imgId, full, await resize(im, 480, 0.78)); } finally { URL.revokeObjectURL(u); }
+    });
+    await Store.putCard(remote);
+    if (local) {
+      const keep = new Set(imagesOf(remote));
+      const gone = imagesOf(local).filter(x => !keep.has(x));
+      if (gone.length) { gone.forEach(Urls.drop); await Store.deleteImages(gone); }
+      removeFromIndex(id);
+    }
+    S.cards.set(id, remote); addToIndex(remote);
+    st.synced[id] = { sha, u: remote.updatedAt };
+    changed = true;
+  }
+  for (const id of Object.keys(st.synced)) {
+    if (rc.has(id)) continue;
+    const local = S.cards.get(id);
+    if (local && (local.updatedAt || 0) > st.synced[id].u) { delete st.synced[id]; continue; }
+    if (local) { await dropLocalCard(local); changed = true; }
+    delete st.synced[id];
+  }
+  return changed;
+}
+async function push(head, treeSha, rc, ri) {
+  const st = Sync.state, entries = [], newShas = {};
+  const dirty = [...S.cards.values()].filter(c => !st.synced[c.id] || (c.updatedAt || 0) > st.synced[c.id].u);
+  const need = new Set();
+  for (const c of dirty) for (const id of imagesOf(c)) if (!ri.has(id)) need.add(id);
+  await pool([...need], 3, async id => {
+    const b = await Store.getBlob('images', id);
+    if (b) entries.push({ path: `images/${id}.bin`, mode: '100644', type: 'blob', sha: await writeBlob(new Uint8Array(await b.arrayBuffer())) });
+  });
+  await pool(dirty, 3, async c => {
+    const json = JSON.stringify(cleanCard(c)), u = c.updatedAt || 0;
+    const sha = await writeBlob(te.encode(json));
+    newShas[c.id] = { sha, u };
+    entries.push({ path: `cards/${c.id}.bin`, mode: '100644', type: 'blob', sha });
+  });
+  for (const id of new Set(st.pendingCards)) if (rc.has(id)) entries.push({ path: `cards/${id}.bin`, mode: '100644', type: 'blob', sha: null });
+  const inUse = new Set(); for (const c of S.cards.values()) imagesOf(c).forEach(x => inUse.add(x));
+  for (const id of new Set(st.pendingImages)) if (ri.has(id) && !inUse.has(id)) entries.push({ path: `images/${id}.bin`, mode: '100644', type: 'blob', sha: null });
+  if (entries.length) {
+    const tree = await gh('POST', '/git/trees', { base_tree: treeSha, tree: entries });
+    const commit = await gh('POST', '/git/commits', { message: `동기화 ${new Date().toISOString()}`, tree: tree.sha, parents: [head] });
+    try { await gh('PATCH', '/git/refs/heads/' + encodeURIComponent(Sync.cfg.branch), { sha: commit.sha, force: false }); }
+    catch (e) { if (e.status === 422 || e.status === 409) return 'retry'; throw e; }
+  }
+  Object.assign(st.synced, newShas);
+  for (const id of st.pendingCards) delete st.synced[id];
+  st.pendingCards = []; st.pendingImages = [];
+  return 'done';
+}
+function afterPull() {
+  resort(); computeVisible();
+  if (!$('#gridView').hidden) { const y = $('#gridView').scrollTop; renderSelTags(); renderGallery(); $('#gridView').scrollTop = y; }
+  else if (!S.editing && !S.sheet && !TP.mode) { if (S.cards.has(S.curId)) renderCard(); else showGrid(); }
+}
+async function runSync() {
+  if (!Sync.cfg || !Sync.key) return;
+  if (Sync.running) { Sync.again = true; return; }
+  if (!navigator.onLine) { setSync('offline'); return; }
+  Sync.running = true; setSync('busy');
+  let changed = false;
+  try {
+    await flushAll();
+    let result = 'retry';
+    for (let attempt = 0; attempt < 3 && result === 'retry'; attempt++) {
+      const ref = await gh('GET', '/git/ref/heads/' + encodeURIComponent(Sync.cfg.branch));
+      const head = ref.object.sha;
+      const commit = await gh('GET', '/git/commits/' + head);
+      const tree = await gh('GET', `/git/trees/${commit.tree.sha}?recursive=1`);
+      const rc = new Map(), ri = new Map();
+      for (const t of tree.tree) {
+        if (t.type !== 'blob') continue;
+        let m = /^cards\/([^/]+)\.bin$/.exec(t.path); if (m) { rc.set(m[1], t.sha); continue; }
+        m = /^images\/([^/]+)\.bin$/.exec(t.path); if (m) ri.set(m[1], t.sha);
+      }
+      if (await pull(rc, ri)) changed = true;
+      result = await push(head, commit.tree.sha, rc, ri);
+    }
+    if (result === 'retry') throw fail('다른 기기와 동시에 저장하려다 밀렸어요. 잠시 뒤 다시 할게요.');
+    Sync.state.lastAt = Date.now();
+    saveSyncState();
+    setSync('ok');
+  } catch (e) {
+    saveSyncState();
+    setSync(e && e.name === 'TypeError' && !navigator.onLine ? 'offline' : 'error', explain(e));
+  } finally {
+    Sync.running = false;
+    if (changed) afterPull();
+    if (Sync.again) { Sync.again = false; scheduleSync(1000); }
+  }
+}
+async function connectSync(repoRaw, token, pass) {
+  const repo = repoRaw.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw fail('레포는 "아이디/레포이름" 모양으로 적어 주세요.');
+  if (!token.trim()) throw fail('열쇠(토큰)를 붙여 넣어 주세요.');
+  if (pass.length < 8) throw fail('암호 비밀번호는 8자 이상으로 정해 주세요.');
+  const cfg = { repo, token: token.trim() };
+  const info = await gh('GET', '', null, cfg);
+  if (!info.private) throw fail('이 레포는 공개 레포예요. 카드 데이터는 비공개 레포에만 올릴게요.');
+  cfg.branch = info.default_branch;
+  try { await gh('GET', '/git/ref/heads/' + encodeURIComponent(cfg.branch), null, cfg); }
+  catch (e) { if (e.status === 404 || e.status === 409) throw fail('레포가 비어 있어요. README 파일을 하나 만든 뒤 다시 연결해 주세요.'); throw e; }
+  let meta = null;
+  try { const f = await gh('GET', '/contents/meta.json?ref=' + encodeURIComponent(cfg.branch), null, cfg); meta = JSON.parse(td.decode(unb64(f.content))); }
+  catch (e) { if (e.status !== 404) throw e; }
+  let key;
+  if (meta) {
+    if (meta.app !== 'person-cards' || !meta.salt || !meta.check) throw fail('다른 용도로 쓰는 레포 같아요. 카드첩 전용 레포를 골라 주세요.');
+    key = await deriveKey(pass, unb64(meta.salt));
+    let ok = false;
+    try { ok = td.decode(await unseal(unb64(meta.check), key)) === 'collector-ok'; } catch (e) { ok = false; }
+    if (!ok) throw fail('암호 비밀번호가 처음 정한 것과 달라요.');
+  } else {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    key = await deriveKey(pass, salt);
+    Sync.key = key;
+    const body = { app: 'person-cards', v: 1, salt: b64(salt), check: b64(await seal(te.encode('collector-ok'))), note: '인물 카드첩 동기화 데이터. 카드와 사진은 모두 암호화되어 있어요.' };
+    await gh('PUT', '/contents/meta.json', { message: '동기화 시작', content: b64(te.encode(JSON.stringify(body, null, 2))), branch: cfg.branch }, cfg);
+  }
+  cfg.key = b64(await crypto.subtle.exportKey('raw', key));
+  Sync.cfg = cfg; Sync.key = key;
+  Sync.state = { synced: {}, pendingCards: [], pendingImages: [], lastAt: 0 };
+  await Store.putMeta('sync', cfg);
+  await Store.putMeta('state', Sync.state);
+}
+async function disconnectSync() {
+  clearTimeout(Sync.timer);
+  Sync.cfg = null; Sync.key = null; Sync.state = null;
+  await Store.delMeta('sync').catch(() => {});
+  await Store.delMeta('state').catch(() => {});
+  setSync('off');
+}
+async function loadSync() {
+  try {
+    const cfg = await Store.getMeta('sync');
+    if (!cfg || !cfg.key) return;
+    Sync.key = await crypto.subtle.importKey('raw', unb64(cfg.key), { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+    Sync.cfg = cfg;
+    Sync.state = Object.assign({ synced: {}, pendingCards: [], pendingImages: [], lastAt: 0 }, await Store.getMeta('state'));
+    setSync('ok');
+  } catch (e) { Sync.cfg = null; Sync.key = null; }
+}
+function openSyncSheet() { $('#syncScrim').hidden = false; renderSyncSheet(); }
+function closeSyncSheet() { $('#syncScrim').hidden = true; }
+function renderSyncSheet() {
+  const sh = $('#syncSheet');
+  if (sh.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  sh.textContent = '';
+  const head = h('div', { class: 'thead' }, h('h2', { class: 'ttitle' }, '동기화 설정'), h('span', { class: 'grow' }), h('button', { class: 'btn sm', type: 'button', onclick: closeSyncSheet }, '닫기'));
+  if (Sync.cfg) {
+    const at = Sync.state && Sync.state.lastAt ? new Date(Sync.state.lastAt).toLocaleString('ko-KR') : '아직 없음';
+    sh.append(head,
+      h('dl', { class: 'kv' }, h('dt', null, '레포'), h('dd', null, `${Sync.cfg.repo} (${Sync.cfg.branch})`), h('dt', null, '마지막 동기화'), h('dd', null, at), h('dt', null, '암호화'), h('dd', null, '켜짐')),
+      h('p', { class: 'ferr' }, Sync.lastError),
+      h('p', { class: 'fhint' }, '앱을 열 때와 카드를 고치고 몇 초 뒤에 저절로 맞춰져요. 인터넷이 없을 때 고친 카드는 다음에 연결되면 올라가요.'),
+      h('div', { class: 'actions' },
+        confirmBtn('연결 끊기', '한 번 더 누르면 끊음', async () => { await disconnectSync(); renderSyncSheet(); toast('동기화를 껐어요. 이 기기의 카드는 그대로 있어요.'); }),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'btn primary', type: 'button', onclick: () => runSync() }, Sync.running ? '동기화 중…' : '지금 동기화')));
+    return;
+  }
+  const f = (id, label, attrs, hint) => h('div', { class: 'field' }, h('label', { for: id }, label), h('input', Object.assign({ id, class: 'in', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false' }, attrs)), hint ? h('p', { class: 'fhint' }, hint) : null);
+  const err = h('p', { class: 'ferr', role: 'alert' });
+  const go = h('button', { class: 'btn primary', type: 'submit' }, '연결하기');
+  const form = h('form', { class: 'side', novalidate: true },
+    f('s-repo', '비공개 레포', { placeholder: '아이디/collector-data' }),
+    f('s-token', '열쇠 (토큰)', { type: 'password', placeholder: 'github_pat_…' }, '이 기기에만 저장돼요.'),
+    f('s-pass', '암호 비밀번호', { type: 'password', autocomplete: 'new-password' }, '처음 연결할 때 정한 비밀번호를 다른 기기에서도 똑같이 넣어요. 잊으면 아무도 복구할 수 없으니 따로 적어 두세요.'),
+    f('s-pass2', '암호 비밀번호 확인', { type: 'password', autocomplete: 'new-password' }),
+    err,
+    h('div', { class: 'actions' }, h('span', { class: 'grow' }), go));
+  form.addEventListener('input', () => { err.textContent = ''; });
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const repo = $('#s-repo').value, token = $('#s-token').value, pass = $('#s-pass').value;
+    if (pass !== $('#s-pass2').value) { err.textContent = '두 비밀번호가 서로 달라요.'; return; }
+    go.textContent = '연결하는 중…'; go.setAttribute('aria-disabled', 'true');
+    try {
+      await connectSync(repo, token, pass);
+      document.activeElement && document.activeElement.blur();
+      renderSyncSheet();
+      toast('연결했어요. 카드를 맞추는 중이에요.');
+      runSync();
+    } catch (ex) {
+      err.textContent = explain(ex);
+      go.textContent = '연결하기'; go.removeAttribute('aria-disabled');
+    }
+  });
+  sh.append(head, form);
+}
+
 /* ---------- 연결 ---------- */
 function bindUI() {
   thumbObs = new IntersectionObserver(es => {
@@ -906,6 +1217,9 @@ function bindUI() {
   $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; renderGallery(); }, 120); });
   $('#newBtn').addEventListener('click', newCard);
   $('#tagBtn').addEventListener('click', () => openTags('filter'));
+  $('#syncBtn').addEventListener('click', openSyncSheet);
+  $('#syncScrim').addEventListener('click', e => { if (e.target === e.currentTarget) closeSyncSheet(); });
+  window.addEventListener('online', () => scheduleSync(500));
   $('#tagScrim').addEventListener('click', e => { if (e.target === e.currentTarget) closeTags(); });
   $('#backBtn').addEventListener('click', showGrid);
   $('#prevBtn').addEventListener('click', () => step(-1));
@@ -924,6 +1238,7 @@ function bindUI() {
     if (act === 'new') newCard();
     else if (act === 'seed') seedExamples();
     else if (act === 'export') exportAll();
+    else if (act === 'sync') openSyncSheet();
     else if (act === 'import') { const f = $('#importFile'); f.value = ''; f.click(); }
   });
   $('#importFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) importFile(f); });
@@ -946,6 +1261,7 @@ function bindUI() {
   stage.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); } }, true);
 
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('#syncScrim').hidden) { closeSyncSheet(); return; }
     if (e.key === 'Escape' && TP.mode) { if (TP.renaming) { TP.renaming = null; renderTagList(); } else closeTags(); return; }
     if (e.key === 'Escape' && S.sheet) { closeSheet(); return; }
     if ($('#cardView').hidden || S.sheet || S.editing || TP.mode) return;
@@ -954,7 +1270,7 @@ function bindUI() {
     else if (e.key === 'ArrowLeft') step(-1);
   });
 
-  document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); else scheduleSync(500); });
   window.addEventListener('pagehide', flushAll);
 }
 
@@ -965,8 +1281,10 @@ async function boot() {
   for (const c of list) { S.cards.set(c.id, c); addToIndex(c); }
   resort();
   $('#memNote').hidden = !Store.memory;
+  await loadSync();
   bindUI();
   showGrid();
+  scheduleSync(600);
 }
 boot();
 })();
