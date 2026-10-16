@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="카드첩">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#262B33">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<title>인물 카드첩</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* 레이아웃: 아이패드 가로 한 화면 고정 — 왼쪽 인물 기둥(태그·이름·대표사진·기본정보) 30% + 오른쪽 구분 3x3 격자. 좁은 화면에선 세로로 쌓임
+   색: 검정 대신 짙은 회청색 바탕 — 밝은 사진이 와도 대비가 과하지 않게 */
+:root{
+  --bg:#262B33; --surface:#30363F; --well:#2A3038; --sunk:#3A414B; --ink:#EFEBE3; --ink-2:#C3C8CF; --ink-3:#959DA8;
+  --line:#454D58; --accent:#E6BE78; --accent-line:#75653F; --on-accent:#2A2112;
+  --danger:#F09A8F; --danger-soft:#4A3230; --scrim:rgba(12,14,18,.6); --cap:rgba(22,25,31,.74);
+  --f-name:"Nanum Myeongjo","AppleMyungjo",serif;
+  --f-body:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html{box-sizing:border-box;height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{height:100%;display:flex;flex-direction:column;gap:12px;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:14px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.icon{width:38px;padding:0;font-size:20px;line-height:1}
+.btn.sm{height:32px;padding:0 10px;font-size:13px}
+.btn.danger{color:var(--danger)}
+.btn.danger.armed{background:var(--danger-soft);border-color:var(--danger)}
+.btn[aria-disabled="true"]{opacity:.35;pointer-events:none}
+
+.gbar{display:flex;flex-direction:column;gap:10px}
+.row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{font-family:var(--f-name);font-weight:800;font-size:22px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:8px}
+.count{font-family:var(--f-mono);font-size:12px;font-weight:500;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.search{flex:1 1 220px;min-width:0;height:40px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 12px;font-size:16px}
+.search::placeholder{color:var(--ink-3)}
+.menuwrap{position:relative}
+.menu{position:absolute;right:0;top:46px;z-index:15;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:6px;min-width:200px;display:flex;flex-direction:column;box-shadow:0 10px 28px rgba(0,0,0,.35)}
+.menu button{text-align:left;background:none;border:0;padding:10px 12px;border-radius:6px;cursor:pointer;font-size:14px}
+.menu button:hover{background:var(--surface)}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--on-accent);font-family:var(--f-mono);font-size:11px;font-weight:500}
+.seltags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.linkbtn{background:none;border:0;padding:4px 6px;font-size:13px;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.chip{flex:0 0 auto;min-width:max-content;white-space:nowrap;height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:13px;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip b{font-family:var(--f-mono);font-weight:500;font-size:11px;color:var(--ink-3)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.chip[aria-pressed="true"] b{color:var(--on-accent);opacity:.8}
+.chip .x{font-size:15px;line-height:1}
+.chip.add{border-style:dashed;color:var(--ink-2);background:transparent}
+.chip.lg{height:36px;padding:0 13px;font-size:14px}
+.chip.create{height:36px;padding:0 13px;border-style:dashed;border-color:var(--accent);color:var(--accent);font-weight:500}
+.tagedit{display:flex;flex-wrap:wrap;gap:6px}
+.tsheet{background:var(--surface);border:1px solid var(--line);border-radius:18px;width:min(720px,100%);height:min(640px,100%);display:flex;flex-direction:column;gap:12px;padding:18px}
+.thead{display:flex;align-items:center;gap:8px}
+.ttitle{font-family:var(--f-name);font-weight:800;font-size:20px;margin:0}
+.tlist{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start}
+.tlist.rows{flex-direction:column;flex-wrap:nowrap;gap:0}
+.trow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tname{font-weight:500;color:var(--accent);overflow-wrap:anywhere}
+.tcount{font-family:var(--f-mono);font-weight:500;font-size:12px;color:var(--ink-3)}
+.tedit{flex:1 1 200px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tmsg{font-size:12px;color:var(--ink-2);min-height:1.2em}
+.tempty{color:var(--ink-2);margin:8px 0;font-size:14px;width:100%}
+.tfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.tinfo{font-size:13px;color:var(--ink-2);overflow-wrap:anywhere;min-width:0}
+.note{margin:0;font-size:13px;color:var(--danger);background:var(--danger-soft);padding:8px 12px;border-radius:8px}
+
+.gridview{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px;padding-bottom:24px}
+.tile{display:flex;flex-direction:column;gap:6px;text-align:left;background:none;border:0;padding:0;cursor:pointer;min-width:0}
+.tile .ph{aspect-ratio:4/5;max-width:100%;border-radius:12px;background:var(--sunk);overflow:hidden;border:1px solid var(--line)}
+.tile:hover .ph{border-color:var(--ink-3)}
+.ph img,.main img,.si img,.big img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .nm{font-family:var(--f-name);font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .tg{font-size:12px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-4px}
+.sentinel{height:1px}
+.empty{max-width:520px;margin:10vh auto 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+.empty h2{font-family:var(--f-name);font-weight:800;font-size:24px;margin:0;text-wrap:balance}
+.empty p{margin:0;color:var(--ink-2)}
+.empty .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.noresult{color:var(--ink-2);margin:24px 0}
+
+.cardview{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px}
+.cbar{display:flex;align-items:center;gap:8px}
+.cbar .nav{display:flex;align-items:center;gap:6px}
+.pos{font-family:var(--f-mono);font-size:13px;color:var(--ink-2);min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+.grow{flex:1}
+.stage{flex:1;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;display:grid;grid-template-columns:minmax(0,30%) minmax(0,1fr);gap:20px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.stage.editing{user-select:auto;-webkit-user-select:auto}
+.left{display:flex;flex-direction:column;gap:6px;min-height:0;min-width:0}
+.ctags{display:flex;flex-wrap:wrap;gap:6px;max-height:64px;overflow:hidden;min-height:24px}
+.ctags span{font-size:12px;font-weight:500;color:var(--accent);border:1px solid var(--accent-line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.cname{font-family:var(--f-name);font-weight:800;font-size:clamp(26px,3.2vw,38px);line-height:1.15;margin:2px 0 4px;letter-spacing:-.01em;overflow-wrap:anywhere}
+.main{flex:1;min-height:120px;border-radius:12px;background:var(--sunk);overflow:hidden;position:relative}
+.noimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:13px;text-align:center;padding:8px}
+.si,.big{position:relative}
+.summary{background:var(--well);border-radius:12px;padding:12px 14px;max-height:28%;overflow:auto;min-height:0}
+.lbl{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--ink-3);margin-bottom:2px}
+.summary p{margin:0;font-family:var(--f-name);font-size:15px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.sections{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:14px;min-height:0;min-width:0}
+.slot{display:flex;flex-direction:column;gap:5px;min-height:0;min-width:0;background:none;border:0;padding:0;text-align:left;cursor:pointer}
+.slot .si{flex:1;min-height:0;border-radius:12px;background:var(--sunk);overflow:hidden;border:1px solid var(--line)}
+.slot:hover .si{border-color:var(--ink-3)}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:9px 12px;background:var(--cap);display:flex;gap:8px;align-items:baseline;min-width:0}
+.cap b{font-family:var(--f-mono);font-size:11px;font-weight:500;color:var(--accent);flex:none}
+.cap span{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.slot.vacant{cursor:default}
+.slot.vacant .si{background:transparent;border:1px dashed var(--line)}
+.slot.add .si{background:transparent;border:1px dashed var(--ink-3);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink-2);font-size:13px}
+.slot.add .plus{font-size:26px;line-height:1;font-weight:400}
+.slot.add .cnt{font-family:var(--f-mono);font-weight:500;color:var(--ink-3);font-size:12px}
+.hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;font-size:12px;color:var(--ink-3)}
+
+.in{width:100%;border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:8px 10px;font-size:16px}
+.in::placeholder{color:var(--ink-3)}
+.in-name{font-family:var(--f-name);font-weight:700;font-size:22px}
+textarea.in{resize:none;line-height:1.6}
+.imgbar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:6px;flex-wrap:wrap}
+
+.scrim{position:fixed;inset:0;z-index:20;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:18px;width:min(900px,100%);max-height:100%;overflow:auto;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;padding:18px}
+.big{aspect-ratio:1;max-width:100%;background:var(--well);border-radius:12px;overflow:hidden}
+.big img{object-fit:contain}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.stitle{font-family:var(--f-name);font-weight:800;font-size:24px;margin:0;text-wrap:balance;overflow-wrap:anywhere}
+.sdesc{margin:0;font-family:var(--f-name);font-size:16px;color:var(--ink-2);line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;flex:1}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--ink);color:#20252C;padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
+
+@keyframes inR{from{transform:translateX(28px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes inL{from{transform:translateX(-28px);opacity:.3}to{transform:none;opacity:1}}
+.stage.inR{animation:inR .2s ease-out}
+.stage.inL{animation:inL .2s ease-out}
+@media (prefers-reduced-motion: reduce){.stage.inR,.stage.inL{animation:none}}
+
+@media (max-width:700px),(max-height:520px){
+  .cardview{overflow:auto}
+  .stage{flex:none;display:flex;flex-direction:column;padding:14px}
+  .main{flex:none;aspect-ratio:4/5;max-height:70vh;max-width:100%}
+  .summary{max-height:none}
+  .sections{grid-template-rows:none}
+  .slot .si{flex:none;aspect-ratio:1;max-width:100%}
+  .slot.vacant{display:none}
+  .sheet{grid-template-columns:minmax(0,1fr)}
+  .brand{font-size:19px}
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <header id="gridBar" class="gbar">
+    <div class="row1">
+      <div class="brand">인물 카드첩 <span id="count" class="count"></span></div>
+      <input id="q" class="search" type="search" placeholder="이름 검색 · 초성도 돼요 (ㄱㅎㄹ)" autocomplete="off" enterkeyhint="search" aria-label="이름 검색">
+      <button id="tagBtn" class="btn" type="button">태그 <span id="tagBadge" class="badge" hidden></span></button>
+      <button id="newBtn" class="btn primary" type="button">새 카드</button>
+      <div class="menuwrap">
+        <button id="menuBtn" class="btn icon" type="button" aria-label="메뉴" aria-expanded="false">⋯</button>
+        <div id="menu" class="menu" hidden>
+          <button type="button" data-act="export">백업 파일로 내보내기</button>
+          <button type="button" data-act="import">백업 파일 가져오기</button>
+          <button type="button" data-act="seed">예시 카드 넣기</button>
+        </div>
+      </div>
+    </div>
+    <div id="selTags" class="seltags" aria-label="고른 태그" hidden></div>
+    <p id="memNote" class="note" hidden>이 화면에서는 기기 저장소를 쓸 수 없어서, 창을 닫으면 카드가 사라져요.</p>
+  </header>
+
+  <main id="gridView" class="gridview">
+    <div id="empty" class="empty" hidden>
+      <h2>첫 인물 카드를 만들어 보세요</h2>
+      <p>대표 사진, 이름, 짧은 기본 정보를 적고, 사진 한 장씩 붙는 구분을 최대 9개까지 더할 수 있어요.</p>
+      <div class="row">
+        <button class="btn primary" type="button" data-act="new">카드 만들기</button>
+        <button class="btn" type="button" data-act="seed">예시 카드 넣어 보기</button>
+      </div>
+    </div>
+    <p id="noResult" class="noresult" hidden>조건에 맞는 카드가 없어요.</p>
+    <div id="gallery" class="gallery"></div>
+    <div id="sentinel" class="sentinel" hidden></div>
+  </main>
+
+  <section id="cardView" class="cardview" hidden>
+    <div class="cbar">
+      <button id="backBtn" class="btn" type="button">‹ 목록</button>
+      <div class="nav">
+        <button id="prevBtn" class="btn icon" type="button" aria-label="이전 카드">‹</button>
+        <span id="pos" class="pos"></span>
+        <button id="nextBtn" class="btn icon" type="button" aria-label="다음 카드">›</button>
+      </div>
+      <span class="grow"></span>
+      <span id="delWrap"></span>
+      <button id="editBtn" class="btn" type="button">편집</button>
+    </div>
+    <article id="stage" class="stage"></article>
+  </section>
+</div>
+
+<div id="scrim" class="scrim" hidden><div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="구분 보기"></div></div>
+<div id="tagScrim" class="scrim" hidden><div id="tagSheet" class="tsheet" role="dialog" aria-modal="true" aria-label="태그"></div></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<input id="file" type="file" accept="image/*" hidden>
+<input id="importFile" type="file" accept="application/json,.json" hidden>
+
+<script>
+(() => {
+'use strict';
+const MAX_SECTIONS = 9;
+const $ = s => document.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids) if (k != null && k !== false) e.append(k);
+  return e;
+}
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+/* ---------- 저장소: 카드 정보와 사진을 따로 보관 ----------
+   cards  : 글 정보만 (작아서 한 번에 전부 불러와도 빠름)
+   images : 원본 크기 사진 (카드를 열 때만 꺼냄)
+   thumbs : 작은 사진 (목록·구분 칸용)                        */
+const Store = (() => {
+  let dbp = null, mem = null;
+  const wrap = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  function open() {
+    if (dbp) return dbp;
+    dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('person-cards', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('cards', { keyPath: 'id' });
+        d.createObjectStore('images');
+        d.createObjectStore('thumbs');
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }).catch(() => { mem = { cards: new Map(), images: new Map(), thumbs: new Map() }; return null; });
+    return dbp;
+  }
+  function run(stores, mode, fn) {
+    return open().then(d => {
+      if (!d) return fn(null);
+      return new Promise((res, rej) => {
+        const t = d.transaction(stores, mode);
+        let out;
+        try { out = fn(t); } catch (e) { rej(e); return; }
+        t.oncomplete = () => res(out);
+        t.onerror = () => rej(t.error);
+        t.onabort = () => rej(t.error);
+      });
+    });
+  }
+  return {
+    get memory() { return !!mem; },
+    async allCards() { const d = await open(); return d ? wrap(d.transaction('cards').objectStore('cards').getAll()) : [...mem.cards.values()]; },
+    putCard: c => run(['cards'], 'readwrite', t => t ? t.objectStore('cards').put(c) : mem.cards.set(c.id, structuredClone(c))),
+    deleteCard: (id, ids) => run(['cards', 'images', 'thumbs'], 'readwrite', t => {
+      if (!t) { mem.cards.delete(id); ids.forEach(i => { mem.images.delete(i); mem.thumbs.delete(i); }); return; }
+      t.objectStore('cards').delete(id);
+      ids.forEach(i => { t.objectStore('images').delete(i); t.objectStore('thumbs').delete(i); });
+    }),
+    putImage: (id, full, thumb) => run(['images', 'thumbs'], 'readwrite', t => {
+      if (!t) { mem.images.set(id, full); mem.thumbs.set(id, thumb); return; }
+      t.objectStore('images').put(full, id); t.objectStore('thumbs').put(thumb, id);
+    }),
+    deleteImages: ids => run(['images', 'thumbs'], 'readwrite', t => {
+      if (!t) { ids.forEach(i => { mem.images.delete(i); mem.thumbs.delete(i); }); return; }
+      ids.forEach(i => { t.objectStore('images').delete(i); t.objectStore('thumbs').delete(i); });
+    }),
+    async getBlob(kind, id) { const d = await open(); return d ? wrap(d.transaction(kind).objectStore(kind).get(id)) : (mem[kind].get(id) || null); }
+  };
+})();
+
+/* ---------- 사진 주소 캐시: 최근 것만 기억하고 오래된 건 풀어줌 ---------- */
+const Urls = (() => {
+  const caches = { images: new Map(), thumbs: new Map() };
+  const limits = { images: 12, thumbs: 240 };
+  const pending = new Map();
+  function get(kind, id) {
+    if (!id) return Promise.resolve(null);
+    const c = caches[kind];
+    if (c.has(id)) { const u = c.get(id); c.delete(id); c.set(id, u); return Promise.resolve(u); }
+    const k = kind + ':' + id;
+    if (pending.has(k)) return pending.get(k);
+    const p = Store.getBlob(kind, id).then(b => {
+      pending.delete(k);
+      if (!b) return null;
+      const u = URL.createObjectURL(b);
+      c.set(id, u);
+      while (c.size > limits[kind]) { const [oid, ou] = c.entries().next().value; c.delete(oid); URL.revokeObjectURL(ou); }
+      return u;
+    }).catch(() => { pending.delete(k); return null; });
+    pending.set(k, p);
+    return p;
+  }
+  function drop(id) { for (const c of Object.values(caches)) if (c.has(id)) { URL.revokeObjectURL(c.get(id)); c.delete(id); } }
+  function clear() { for (const c of Object.values(caches)) { c.forEach(u => URL.revokeObjectURL(u)); c.clear(); } }
+  return { get, drop, clear };
+})();
+
+/* ---------- 사진 줄이기: 원본 1600px, 작은 사진 480px ---------- */
+function loadImg(blob) {
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(blob);
+    const im = new Image();
+    im.onload = () => res({ im, u });
+    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('bad image')); };
+    im.src = u;
+  });
+}
+function resize(im, max, q) {
+  const s = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(im.naturalWidth * s));
+  c.height = Math.max(1, Math.round(im.naturalHeight * s));
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode')), 'image/jpeg', q));
+}
+async function addImage(blob) {
+  const { im, u } = await loadImg(blob);
+  try {
+    const full = await resize(im, 1600, 0.82);
+    const thumb = await resize(im, 480, 0.78);
+    const id = uid();
+    await Store.putImage(id, full, thumb);
+    return id;
+  } finally { URL.revokeObjectURL(u); }
+}
+function removeImages(ids) {
+  ids = ids.filter(Boolean);
+  if (!ids.length) return;
+  ids.forEach(Urls.drop);
+  Store.deleteImages(ids).catch(() => {});
+}
+
+/* ---------- 메모리 속 상태와 색인 ----------
+   cards    : id → 카드
+   keys     : id → 검색용 이름(공백 제거, 소문자) + 초성
+   tagIndex : 태그 → 그 태그를 가진 카드 id 묶음
+   sorted   : 이름순 정렬된 카드 목록                     */
+const S = { cards: new Map(), keys: new Map(), idxTags: new Map(), tagIndex: new Map(), sorted: [], visible: [], q: '', tags: new Set(), curId: null, editing: false, sheet: null };
+const collator = new Intl.Collator('ko', { numeric: true });
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const norm = s => (s || '').toLowerCase().replace(/\s+/g, '');
+function chosung(s) {
+  let o = '';
+  for (const ch of s) { const n = ch.charCodeAt(0) - 0xAC00; o += (n >= 0 && n < 11172) ? CHO[Math.floor(n / 588)] : ch; }
+  return o;
+}
+function addToIndex(c) {
+  const n = norm(c.name);
+  S.keys.set(c.id, { n, c: chosung(n) });
+  for (const t of c.tags) { let s = S.tagIndex.get(t); if (!s) S.tagIndex.set(t, s = new Set()); s.add(c.id); }
+  S.idxTags.set(c.id, c.tags.slice());
+}
+function removeFromIndex(id) {
+  S.keys.delete(id);
+  for (const t of S.idxTags.get(id) || []) { const s = S.tagIndex.get(t); if (s) { s.delete(id); if (!s.size) S.tagIndex.delete(t); } }
+  S.idxTags.delete(id);
+}
+function reindex(c) { removeFromIndex(c.id); addToIndex(c); }
+function resort() { S.sorted = [...S.cards.values()].sort((a, b) => collator.compare(a.name, b.name)); }
+/* 여러 태그를 고르면 "모두 가진 카드"만 남김. 카드 수가 적은 태그부터 확인해서 빨리 걸러냄 */
+function computeVisible() {
+  for (const t of [...S.tags]) if (!S.tagIndex.has(t)) S.tags.delete(t);
+  const q = norm(S.q);
+  const byCho = /^[ㄱ-ㅎ]+$/.test(q);
+  const sets = [...S.tags].map(t => S.tagIndex.get(t)).sort((a, b) => a.size - b.size);
+  const out = [];
+  outer: for (const c of S.sorted) {
+    for (const s of sets) if (!s.has(c.id)) continue outer;
+    if (q) { const k = S.keys.get(c.id); if (!(byCho ? k.c.includes(q) : k.n.includes(q))) continue; }
+    out.push(c);
+  }
+  S.visible = out;
+}
+const cleanTag = s => (s || '').replace(/#/g, '').replace(/\s+/g, '').slice(0, 20);
+/* 대소문자·띄어쓰기만 다른 태그는 같은 태그로 봄 → 오타성 중복 방지 */
+function findTag(raw) {
+  const k = norm(cleanTag(raw));
+  if (!k) return null;
+  for (const t of S.tagIndex.keys()) if (norm(t) === k) return t;
+  return null;
+}
+const tagMatches = (t, q) => !q || (/^[ㄱ-ㅎ]+$/.test(q) ? chosung(norm(t)).includes(q) : norm(t).includes(q));
+const allTagsSorted = () => [...S.tagIndex.entries()].sort((a, b) => b[1].size - a[1].size || collator.compare(a[0], b[0]));
+
+/* ---------- 자동 저장: 입력 후 0.35초 뒤 그 카드 하나만 저장 ---------- */
+const saveTimers = new Map();
+function touch(c) {
+  c.updatedAt = Date.now();
+  clearTimeout(saveTimers.get(c.id));
+  saveTimers.set(c.id, setTimeout(() => flush(c.id), 350));
+}
+function flush(id) {
+  clearTimeout(saveTimers.get(id)); saveTimers.delete(id);
+  const c = S.cards.get(id);
+  return c ? Store.putCard(c).catch(() => toast('저장하지 못했어요. 기기 저장 공간을 확인해 주세요.')) : Promise.resolve();
+}
+const flushAll = () => Promise.all([...saveTimers.keys()].map(flush));
+
+/* ---------- 작은 UI 도우미 ---------- */
+let toastT;
+function toast(m, ms = 2600) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms); }
+function confirmBtn(label, armedLabel, action, extra) {
+  const b = h('button', { class: 'btn danger' + (extra ? ' ' + extra : ''), type: 'button' }, label);
+  let armed = false, t;
+  b.addEventListener('click', () => {
+    if (!armed) { armed = true; b.textContent = armedLabel; b.classList.add('armed'); t = setTimeout(() => { armed = false; b.textContent = label; b.classList.remove('armed'); }, 3000); return; }
+    clearTimeout(t); action();
+  });
+  return b;
+}
+function pickImage(cb) {
+  const f = $('#file');
+  f.value = '';
+  f.onchange = async () => {
+    const file = f.files && f.files[0];
+    if (!file) return;
+    toast('사진을 정리하는 중…', 10000);
+    try { await cb(file); $('#toast').hidden = true; }
+    catch (e) { toast('사진을 넣지 못했어요. 다른 사진으로 해 보세요.'); }
+  };
+  f.click();
+}
+function fillImg(box, kind, id, emptyText) {
+  if (!id) { if (emptyText) box.append(h('span', { class: 'noimg' }, emptyText)); return; }
+  const im = h('img', { alt: '', decoding: 'async' });
+  box.append(im);
+  const cur = S.curId;
+  Urls.get(kind, id).then(u => { if (u && S.curId === cur) im.src = u; });
+}
+
+/* ---------- 목록 화면 ---------- */
+let thumbObs, moreObs, cursor = 0;
+/* 메인 화면에는 고른 태그만 칩으로 보여 줌 (태그가 많아져도 화면이 넘치지 않게) */
+function renderSelTags() {
+  for (const t of [...S.tags]) if (!S.tagIndex.has(t)) S.tags.delete(t);
+  const box = $('#selTags'), badge = $('#tagBadge');
+  box.textContent = '';
+  const n = S.tags.size;
+  badge.hidden = !n; badge.textContent = String(n);
+  box.hidden = !n;
+  if (!n) return;
+  const refresh = () => { renderSelTags(); renderGallery(); $('#gridView').scrollTop = 0; };
+  for (const t of S.tags) box.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': 'true', 'aria-label': `#${t} 선택 풀기`, onclick: () => { S.tags.delete(t); refresh(); } }, '#' + t, h('span', { class: 'x', 'aria-hidden': 'true' }, '×')));
+  box.append(h('button', { class: 'linkbtn', type: 'button', onclick: () => { S.tags.clear(); refresh(); } }, '모두 풀기'));
+}
+
+/* ---------- 태그 창: 모아보기(filter) / 카드에 붙이기(pick) / 관리 ---------- */
+const TP = { mode: null, cardId: null, q: '', manage: false, renaming: null };
+function openTags(mode, cardId) {
+  Object.assign(TP, { mode, cardId: cardId || null, q: '', manage: false, renaming: null });
+  $('#tagScrim').hidden = false;
+  renderTagPanel();
+  if (mode === 'pick' || !matchMedia('(pointer: coarse)').matches) setTimeout(() => { const f = $('#t-q'); if (f) f.focus(); }, 60);
+}
+function closeTags() {
+  const mode = TP.mode;
+  TP.mode = null;
+  $('#tagScrim').hidden = true;
+  if (mode === 'filter') { renderSelTags(); renderGallery(); $('#gridView').scrollTop = 0; }
+  else if (mode === 'pick') renderCard();
+}
+function renderTagPanel() {
+  const sh = $('#tagSheet');
+  sh.textContent = '';
+  const pick = TP.mode === 'pick';
+  const q = h('input', { id: 't-q', class: 'in', type: 'search', placeholder: pick ? '태그 찾기 · 없으면 새로 만들기' : '태그 찾기 · 초성도 돼요', autocomplete: 'off', enterkeyhint: pick ? 'done' : 'search', 'aria-label': '태그 찾기',
+    oninput: e => { TP.q = e.target.value; renderTagList(); },
+    onkeydown: e => { if (e.key === 'Enter' && pick) { e.preventDefault(); const name = cleanTag(TP.q); if (name) addTagToCard(S.cards.get(TP.cardId), name); } } });
+  q.value = TP.q;
+  sh.append(
+    h('div', { class: 'thead' },
+      h('h2', { class: 'ttitle' }, pick ? '이 카드의 태그' : TP.manage ? '태그 관리' : '태그로 모아보기'),
+      h('span', { class: 'grow' }),
+      !pick && h('button', { class: 'btn sm' + (TP.manage ? ' primary' : ''), type: 'button', onclick: () => { TP.manage = !TP.manage; TP.renaming = null; renderTagPanel(); } }, TP.manage ? '관리 끝내기' : '태그 관리'),
+      h('button', { class: 'btn sm', type: 'button', onclick: closeTags }, '닫기')),
+    q,
+    h('div', { id: 't-list', class: 'tlist' }),
+    h('div', { id: 't-foot', class: 'tfoot' }));
+  renderTagList();
+}
+function renderTagList() {
+  const list = $('#t-list'), foot = $('#t-foot');
+  if (!list) return;
+  list.textContent = ''; foot.textContent = '';
+  list.classList.toggle('rows', TP.manage);
+  const pick = TP.mode === 'pick';
+  const c = pick ? S.cards.get(TP.cardId) : null;
+  const q = norm(cleanTag(TP.q));
+  const all = allTagsSorted().filter(([t]) => tagMatches(t, q));
+  if (pick && q && !findTag(TP.q)) {
+    const name = cleanTag(TP.q);
+    list.append(h('button', { class: 'chip create', type: 'button', onclick: () => addTagToCard(c, name) }, `+ 새 태그 #${name} 만들기`));
+  }
+  if (!all.length && !list.childElementCount) {
+    list.append(h('p', { class: 'tempty' }, S.tagIndex.size ? '맞는 태그가 없어요.'
+      : pick ? '아직 태그가 없어요. 위에 이름을 적어서 첫 태그를 만들어 보세요.' : '아직 태그가 없어요. 카드 편집에서 태그를 붙여 보세요.'));
+  }
+  const LIMIT = 300;
+  for (const [t, set] of all.slice(0, LIMIT)) {
+    if (TP.manage) { list.append(manageRow(t, set.size)); continue; }
+    const on = pick ? c.tags.includes(t) : S.tags.has(t);
+    list.append(h('button', { class: 'chip lg', type: 'button', 'aria-pressed': String(on),
+      onclick: () => { if (pick) toggleCardTag(c, t); else { S.tags.has(t) ? S.tags.delete(t) : S.tags.add(t); renderTagList(); } } },
+      '#' + t, h('b', null, String(set.size))));
+  }
+  if (all.length > LIMIT) list.append(h('p', { class: 'tempty' }, `태그가 많아서 ${LIMIT}개까지만 보여요. 찾기로 좁혀 보세요.`));
+
+  if (pick) {
+    foot.append(h('span', { class: 'tinfo' }, c.tags.length ? c.tags.map(t => '#' + t).join(' ') : '붙인 태그가 없어요'),
+      h('span', { class: 'grow' }), h('button', { class: 'btn primary sm', type: 'button', onclick: closeTags }, '완료'));
+  } else if (!TP.manage) {
+    computeVisible();
+    foot.append(h('span', { class: 'tinfo' }, S.tags.size ? `고른 태그 ${S.tags.size}개를 모두 가진 카드 ${S.visible.length}장` : '여러 개를 고르면, 모두 가진 카드만 남아요'),
+      h('span', { class: 'grow' }),
+      S.tags.size && h('button', { class: 'btn sm', type: 'button', onclick: () => { S.tags.clear(); renderTagList(); } }, '모두 풀기'),
+      h('button', { class: 'btn primary sm', type: 'button', onclick: closeTags }, '결과 보기'));
+  } else {
+    foot.append(h('span', { class: 'tinfo' }, '이미 있는 이름으로 바꾸면 두 태그가 하나로 합쳐져요.'));
+  }
+}
+function manageRow(t, n) {
+  if (TP.renaming !== t) {
+    return h('div', { class: 'trow' },
+      h('span', { class: 'tname' }, '#' + t), h('b', { class: 'tcount' }, `${n}장`), h('span', { class: 'grow' }),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => { TP.renaming = t; renderTagList(); } }, '이름 바꾸기'),
+      confirmBtn('지우기', '한 번 더 누르면 지움', () => { deleteTag(t); renderTagList(); }, 'sm'));
+  }
+  const inp = h('input', { id: 't-rename', class: 'in', value: t, maxlength: '20', autocomplete: 'off', 'aria-label': '새 태그 이름' });
+  const msg = h('span', { class: 'tmsg' });
+  const check = () => {
+    const v = cleanTag(inp.value), ex = findTag(v);
+    msg.textContent = !v ? '이름을 적어 주세요.' : (ex && ex !== t) ? `이미 있는 #${ex}와 합쳐져요. 카드 ${n}장이 옮겨져요.` : `카드 ${n}장의 태그가 함께 바뀌어요.`;
+  };
+  const done = () => { const v = cleanTag(inp.value); if (!v) { check(); return; } renameTag(t, v); TP.renaming = null; renderTagList(); };
+  inp.addEventListener('input', check);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); done(); } });
+  check();
+  setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  return h('div', { class: 'trow' }, h('div', { class: 'tedit' }, inp, msg),
+    h('button', { class: 'btn sm', type: 'button', onclick: () => { TP.renaming = null; renderTagList(); } }, '취소'),
+    h('button', { class: 'btn sm primary', type: 'button', onclick: done }, '바꾸기'));
+}
+function toggleCardTag(c, t) {
+  c.tags = c.tags.includes(t) ? c.tags.filter(x => x !== t) : [...c.tags, t];
+  touch(c); reindex(c); renderTagList();
+}
+function addTagToCard(c, name) {
+  const t = findTag(name) || name;
+  if (!c.tags.includes(t)) { c.tags = [...c.tags, t]; touch(c); reindex(c); }
+  TP.q = '';
+  const f = $('#t-q'); if (f) { f.value = ''; f.focus(); }
+  renderTagList();
+}
+/* 태그 이름 바꾸기: 그 태그를 가진 카드만 색인에서 바로 찾아 고침 */
+function renameTag(old, neu) {
+  const ex = findTag(neu);
+  const target = ex && ex !== old ? ex : neu;
+  if (target === old) return;
+  const ids = [...(S.tagIndex.get(old) || [])];
+  for (const id of ids) {
+    const c = S.cards.get(id);
+    if (!c) continue;
+    c.tags = [...new Set(c.tags.map(x => x === old ? target : x))];
+    touch(c); reindex(c);
+  }
+  if (S.tags.delete(old)) S.tags.add(target);
+  toast(ex && ex !== old ? `#${old}를 #${target}에 합쳤어요 (${ids.length}장).` : `#${old} → #${target} (${ids.length}장)`);
+}
+function deleteTag(t) {
+  const ids = [...(S.tagIndex.get(t) || [])];
+  for (const id of ids) { const c = S.cards.get(id); if (!c) continue; c.tags = c.tags.filter(x => x !== t); touch(c); reindex(c); }
+  S.tags.delete(t);
+  toast(`#${t} 태그를 지웠어요 (${ids.length}장에서 뺐어요).`);
+}
+function tile(c) {
+  const im = h('img', { alt: '', decoding: 'async', 'data-id': c.mainImage || '' });
+  const ph = h('div', { class: 'ph' }, c.mainImage ? im : null);
+  if (c.mainImage) thumbObs.observe(im);
+  return h('button', { class: 'tile', type: 'button', onclick: () => openCard(c.id) }, ph,
+    h('span', { class: 'nm' }, c.name || '이름 없음'),
+    h('span', { class: 'tg' }, c.tags.map(t => '#' + t).join(' ')));
+}
+function appendBatch() {
+  const g = $('#gallery');
+  const end = Math.min(S.visible.length, cursor + 60);
+  const frag = document.createDocumentFragment();
+  for (let i = cursor; i < end; i++) frag.append(tile(S.visible[i]));
+  cursor = end;
+  g.append(frag);
+  $('#sentinel').hidden = cursor >= S.visible.length;
+}
+function renderGallery() {
+  computeVisible();
+  thumbObs.disconnect();
+  $('#gallery').textContent = '';
+  cursor = 0;
+  const total = S.cards.size;
+  $('#count').textContent = total ? (S.visible.length === total ? `${total}장` : `${S.visible.length} / ${total}장`) : '';
+  $('#empty').hidden = total > 0;
+  $('#noResult').hidden = !(total > 0 && S.visible.length === 0);
+  appendBatch();
+}
+
+/* ---------- 카드 화면 ---------- */
+function showGrid() {
+  if (S.editing) exitEdit(false);
+  S.curId = null;
+  $('#cardView').hidden = true;
+  $('#gridView').hidden = false;
+  $('#gridBar').hidden = false;
+  renderSelTags();
+  renderGallery();
+}
+function openCard(id) {
+  S.curId = id;
+  $('#gridView').hidden = true;
+  $('#gridBar').hidden = true;
+  $('#cardView').hidden = false;
+  renderCard();
+}
+function leftCol(c) {
+  const left = h('div', { class: 'left' });
+  const main = h('div', { class: 'main' });
+  if (S.editing) {
+    left.append(
+      h('div', { class: 'tagedit' },
+        ...c.tags.map(t => h('button', { class: 'chip', type: 'button', 'aria-label': `#${t} 빼기`, onclick: () => { c.tags = c.tags.filter(x => x !== t); touch(c); reindex(c); renderCard(); } }, '#' + t, h('span', { class: 'x', 'aria-hidden': 'true' }, '×'))),
+        h('button', { class: 'chip add', type: 'button', onclick: () => openTags('pick', c.id) }, '+ 태그')),
+      h('input', { id: 'f-name', class: 'in in-name', value: c.name, placeholder: '이름', maxlength: '40', autocomplete: 'off', 'aria-label': '이름', oninput: e => { c.name = e.target.value; touch(c); } }));
+    fillImg(main, 'images', c.mainImage, '대표 사진을 넣어 주세요');
+    main.append(h('div', { class: 'imgbar' },
+      h('button', { class: 'btn sm', type: 'button', onclick: () => pickImage(async f => { const id = await addImage(f); const old = c.mainImage; c.mainImage = id; touch(c); removeImages([old]); renderCard(); }) }, c.mainImage ? '대표 사진 바꾸기' : '대표 사진 넣기'),
+      c.mainImage && h('button', { class: 'btn sm', type: 'button', onclick: () => { removeImages([c.mainImage]); c.mainImage = null; touch(c); renderCard(); } }, '빼기')));
+    const ta = h('textarea', { id: 'f-sum', class: 'in', rows: '4', maxlength: '400', placeholder: '이 사람에 대한 이야기를 짧게', 'aria-label': '기본 정보', oninput: e => { c.summary = e.target.value; touch(c); } });
+    ta.value = c.summary;
+    left.append(main, h('div', { class: 'summary' }, h('span', { class: 'lbl' }, '기본 정보'), ta));
+  } else {
+    left.append(
+      h('div', { class: 'ctags' }, ...c.tags.map(t => h('span', null, '#' + t))),
+      h('h1', { class: 'cname' }, c.name || '이름 없음'));
+    fillImg(main, 'images', c.mainImage, '대표 사진 없음');
+    left.append(main, h('div', { class: 'summary' }, h('span', { class: 'lbl' }, '기본 정보'), h('p', null, c.summary || '아직 적은 내용이 없어요.')));
+  }
+  return left;
+}
+function sectionsGrid(c) {
+  const g = h('div', { class: 'sections' });
+  for (const s of c.sections) {
+    const si = h('div', { class: 'si' });
+    fillImg(si, 'thumbs', s.image, '사진 없음');
+    si.append(h('span', { class: 'cap' }, h('b', null, String(c.sections.indexOf(s) + 1).padStart(2, '0')), h('span', null, s.title || '이름 없는 구분')));
+    g.append(h('button', { class: 'slot', type: 'button', onclick: () => openSheet(c.id, s.id) }, si));
+  }
+  let n = c.sections.length;
+  if (S.editing && n < MAX_SECTIONS) {
+    g.append(h('button', { class: 'slot add', type: 'button', onclick: () => addSection(c) },
+      h('div', { class: 'si' }, h('span', { class: 'plus' }, '+'), h('span', null, '구분 추가'), h('span', { class: 'cnt' }, `${n} / ${MAX_SECTIONS}`))));
+    n++;
+  }
+  for (let i = n; i < MAX_SECTIONS; i++) {
+    const si = h('div', { class: 'si' });
+    if (i === 0 && !S.editing) si.append(h('span', { class: 'hint' }, '편집을 누르면 구분을 더할 수 있어요'));
+    g.append(h('div', { class: 'slot vacant', 'aria-hidden': 'true' }, si));
+  }
+  return g;
+}
+function renderCard(anim) {
+  const c = S.cards.get(S.curId);
+  if (!c) { showGrid(); return; }
+  const i = S.visible.findIndex(x => x.id === c.id);
+  $('#pos').textContent = i >= 0 ? `${i + 1} / ${S.visible.length}` : '';
+  $('#prevBtn').setAttribute('aria-disabled', String(S.editing || i <= 0));
+  $('#nextBtn').setAttribute('aria-disabled', String(S.editing || i < 0 || i >= S.visible.length - 1));
+  $('#editBtn').textContent = S.editing ? '완료' : '편집';
+  $('#editBtn').classList.toggle('primary', S.editing);
+  $('#backBtn').hidden = S.editing;
+  const dw = $('#delWrap'); dw.textContent = '';
+  if (S.editing) dw.append(confirmBtn('카드 삭제', '한 번 더 누르면 삭제', deleteCard));
+  const stage = $('#stage');
+  stage.classList.toggle('editing', S.editing);
+  stage.textContent = '';
+  stage.append(leftCol(c), sectionsGrid(c));
+  if (anim) { stage.classList.remove('inL', 'inR'); void stage.offsetWidth; stage.classList.add(anim); }
+  for (const j of [i - 1, i + 1]) { const nb = S.visible[j]; if (nb && nb.mainImage) Urls.get('images', nb.mainImage); }
+}
+function step(d) {
+  if (S.editing || S.sheet) return;
+  const i = S.visible.findIndex(x => x.id === S.curId);
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= S.visible.length) return;
+  S.curId = S.visible[j].id;
+  renderCard(d > 0 ? 'inR' : 'inL');
+}
+function enterEdit() { S.editing = true; renderCard(); }
+function exitEdit(render = true) {
+  const c = S.cards.get(S.curId);
+  S.editing = false;
+  if (c) {
+    c.name = c.name.trim() || '이름 없음';
+    touch(c); flush(c.id);
+    reindex(c); resort(); computeVisible();
+    if (!S.visible.some(x => x.id === c.id)) { S.q = ''; S.tags.clear(); $('#q').value = ''; computeVisible(); toast('이 카드가 보이도록 검색과 태그 선택을 풀었어요.'); }
+  }
+  if (render) renderCard();
+}
+function newCard() {
+  const now = Date.now();
+  const c = { id: uid(), name: '', tags: [...S.tags], summary: '', mainImage: null, sections: [], createdAt: now, updatedAt: now };
+  S.cards.set(c.id, c); addToIndex(c); resort();
+  S.q = ''; $('#q').value = '';
+  computeVisible();
+  touch(c);
+  S.editing = true;
+  openCard(c.id);
+  setTimeout(() => { const f = $('#f-name'); if (f) f.focus(); }, 60);
+}
+async function deleteCard() {
+  const c = S.cards.get(S.curId);
+  if (!c) return;
+  const ids = [c.mainImage, ...c.sections.map(s => s.image)].filter(Boolean);
+  const i = S.visible.findIndex(x => x.id === c.id);
+  clearTimeout(saveTimers.get(c.id)); saveTimers.delete(c.id);
+  try { await Store.deleteCard(c.id, ids); } catch (e) { toast('지우지 못했어요. 다시 해 보세요.'); return; }
+  ids.forEach(Urls.drop);
+  removeFromIndex(c.id); S.cards.delete(c.id); resort();
+  S.editing = false;
+  computeVisible();
+  toast('카드를 지웠어요.');
+  if (S.visible.length) { S.curId = S.visible[Math.min(Math.max(i, 0), S.visible.length - 1)].id; renderCard(); }
+  else showGrid();
+}
+
+/* ---------- 구분 시트 ---------- */
+function addSection(c) {
+  if (c.sections.length >= MAX_SECTIONS) return;
+  const s = { id: uid(), title: '', desc: '', image: null };
+  c.sections.push(s); touch(c);
+  renderCard();
+  openSheet(c.id, s.id);
+  setTimeout(() => { const f = $('#f-stitle'); if (f) f.focus(); }, 60);
+}
+function openSheet(cardId, secId) {
+  const c = S.cards.get(cardId);
+  const s = c && c.sections.find(x => x.id === secId);
+  if (!s) return;
+  S.sheet = { cardId, secId };
+  const sh = $('#sheet'); sh.textContent = '';
+  const big = h('div', { class: 'big' });
+  fillImg(big, 'images', s.image, S.editing ? '이 구분의 사진을 넣어 주세요' : '사진 없음');
+  const side = h('div', { class: 'side' });
+  if (S.editing) {
+    big.append(h('div', { class: 'imgbar' },
+      h('button', { class: 'btn sm', type: 'button', onclick: () => pickImage(async f => { const id = await addImage(f); const old = s.image; s.image = id; touch(c); removeImages([old]); openSheet(cardId, secId); }) }, s.image ? '사진 바꾸기' : '사진 넣기'),
+      s.image && h('button', { class: 'btn sm', type: 'button', onclick: () => { removeImages([s.image]); s.image = null; touch(c); openSheet(cardId, secId); } }, '빼기')));
+    const ta = h('textarea', { id: 'f-sdesc', class: 'in', rows: '9', maxlength: '1000', placeholder: '이 구분에 대한 이야기', 'aria-label': '구분 설명', oninput: e => { s.desc = e.target.value; touch(c); } });
+    ta.value = s.desc;
+    side.append(
+      h('span', { class: 'lbl' }, '구분 이름'),
+      h('input', { id: 'f-stitle', class: 'in', value: s.title, maxlength: '24', placeholder: '예: 처음 만난 날', autocomplete: 'off', 'aria-label': '구분 이름', oninput: e => { s.title = e.target.value; touch(c); } }),
+      h('span', { class: 'lbl' }, '설명'), ta,
+      h('div', { class: 'actions' },
+        confirmBtn('구분 삭제', '한 번 더 누르면 삭제', () => { c.sections = c.sections.filter(x => x.id !== s.id); removeImages([s.image]); touch(c); closeSheet(); }),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'btn primary', type: 'button', onclick: closeSheet }, '닫기')));
+  } else {
+    side.append(
+      h('h2', { class: 'stitle' }, s.title || '이름 없는 구분'),
+      h('p', { class: 'sdesc' }, s.desc || '적은 내용이 없어요.'),
+      h('div', { class: 'actions' }, h('span', { class: 'grow' }), h('button', { class: 'btn', type: 'button', onclick: closeSheet }, '닫기')));
+  }
+  sh.append(big, side);
+  $('#scrim').hidden = false;
+}
+function closeSheet() { $('#scrim').hidden = true; S.sheet = null; renderCard(); }
+
+/* ---------- 백업: 카드 + 원본 사진을 파일 하나로 ---------- */
+function blobToB64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(b); }); }
+function b64ToBlob(s) { const bin = atob(s); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: 'image/jpeg' }); }
+async function exportAll() {
+  await flushAll();
+  if (!S.cards.size) { toast('내보낼 카드가 없어요.'); return; }
+  toast('백업 파일을 만드는 중…', 20000);
+  const cards = [...S.cards.values()];
+  const images = {};
+  for (const c of cards) for (const id of [c.mainImage, ...c.sections.map(s => s.image)]) {
+    if (!id || images[id]) continue;
+    const b = await Store.getBlob('images', id);
+    if (b) images[id] = await blobToB64(b);
+  }
+  const blob = new Blob([JSON.stringify({ app: 'person-cards', version: 1, exportedAt: new Date().toISOString(), cards, images })], { type: 'application/json' });
+  const name = `인물카드첩-${new Date().toISOString().slice(0, 10)}.json`;
+  $('#toast').hidden = true;
+  const file = new File([blob], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const a = h('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+async function importFile(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { toast('백업 파일을 읽지 못했어요.'); return; }
+  if (!data || data.app !== 'person-cards' || !Array.isArray(data.cards)) { toast('인물 카드첩 백업 파일이 아니에요.'); return; }
+  toast('가져오는 중…', 60000);
+  let added = 0, updated = 0;
+  try {
+    for (const c of data.cards) {
+      if (!c || !c.id) continue;
+      const mine = S.cards.get(c.id);
+      if (mine && (mine.updatedAt || 0) >= (c.updatedAt || 0)) continue;
+      for (const id of [c.mainImage, ...(c.sections || []).map(s => s.image)]) {
+        if (!id || !data.images || !data.images[id]) continue;
+        const full = b64ToBlob(data.images[id]);
+        const { im, u } = await loadImg(full);
+        try { await Store.putImage(id, full, await resize(im, 480, 0.78)); } finally { URL.revokeObjectURL(u); }
+      }
+      const card = { id: c.id, name: c.name || '이름 없음', tags: Array.isArray(c.tags) ? c.tags : [], summary: c.summary || '', mainImage: c.mainImage || null, sections: (c.sections || []).slice(0, MAX_SECTIONS), createdAt: c.createdAt || Date.now(), updatedAt: c.updatedAt || Date.now() };
+      await Store.putCard(card);
+      if (mine) { removeFromIndex(mine.id); updated++; } else added++;
+      S.cards.set(card.id, card); addToIndex(card);
+    }
+  } catch (e) { toast('가져오는 도중 멈췄어요. 저장 공간을 확인해 주세요.'); }
+  resort(); showGrid();
+  toast(`새 카드 ${added}장, 갱신 ${updated}장을 가져왔어요.`);
+}
+
+/* ---------- 예시 카드 ---------- */
+function placeholder(text, hue, tall) {
+  const c = document.createElement('canvas');
+  c.width = 900; c.height = tall ? 1125 : 900;
+  const g = c.getContext('2d');
+  g.fillStyle = `hsl(${hue} 28% 82%)`; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = `hsl(${hue} 30% 72%)`;
+  g.beginPath(); g.arc(c.width * 0.78, c.height * 0.22, c.width * 0.32, 0, Math.PI * 2); g.fill();
+  g.fillStyle = `hsl(${hue} 34% 24%)`;
+  g.font = `700 ${tall ? 120 : 84}px "Gowun Batang", serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, c.width / 2, c.height * 0.58);
+  g.font = '500 34px "IBM Plex Mono", monospace';
+  g.fillText('예시 사진', c.width / 2, c.height * 0.58 + (tall ? 120 : 90));
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+}
+async function seedExamples() {
+  toast('예시 카드를 만드는 중…', 20000);
+  const ex = [
+    { name: '김하린', hue: 165, tags: ['예시', '동아리', '디자인'], summary: '동아리 설명회에서 처음 만났다. 포스터 작업을 같이 하자고 먼저 말 걸어 준 사람.',
+      sections: [['처음 만난 날', '설명회 뒤풀이에서 옆자리에 앉았다. 포스터 이야기로 한 시간 넘게 떠들었다.'], ['같이 만든 포스터', '가을 공연 포스터. 글씨는 내가, 그림은 하린이 맡았다.'], ['추천해 준 책', '타이포그래피 입문서. 아직 반쯤 읽었다.'], ['좋아하는 것', '민트 초코, 필름 카메라, 비 오는 날 산책']] },
+    { name: '박도윤', hue: 215, tags: ['예시', '스터디', '백엔드'], summary: '알고리즘 스터디를 같이 하는 동기. 설명을 정말 쉽게 해 준다.',
+      sections: [['스터디 첫날', '그래프 문제를 같이 풀다가 막혔는데 도윤이가 그림으로 풀어 줬다.'], ['명함', '인턴 때 받은 명함 사진.'], ['같이 간 해커톤', '밤새 서버를 붙잡고 있었다.']] },
+    { name: '이서아', hue: 28, tags: ['예시', '교환학생'], summary: '교환학생으로 온 친구. 한국 노래를 좋아한다.',
+      sections: [['환영회', '처음 인사한 날. 자기소개를 한국어로 준비해 왔다.'], ['같이 간 곳', '경복궁 야간 개장.']] }
+  ];
+  try {
+    for (const e of ex) {
+      const now = Date.now();
+      const c = { id: uid(), name: e.name, tags: e.tags, summary: e.summary, mainImage: await addImage(await placeholder(e.name, e.hue, true)), sections: [], createdAt: now, updatedAt: now };
+      for (const [title, desc] of e.sections) c.sections.push({ id: uid(), title, desc, image: await addImage(await placeholder(title, e.hue, false)) });
+      await Store.putCard(c);
+      S.cards.set(c.id, c); addToIndex(c);
+    }
+  } catch (err) { toast('예시 카드를 만들지 못했어요.'); }
+  resort(); showGrid();
+  toast('예시 카드 3장을 넣었어요. #예시 태그로 모아 볼 수 있어요.', 4000);
+}
+
+/* ---------- 연결 ---------- */
+function bindUI() {
+  thumbObs = new IntersectionObserver(es => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      const im = e.target; thumbObs.unobserve(im);
+      Urls.get('thumbs', im.dataset.id).then(u => { if (u) im.src = u; });
+    }
+  }, { root: $('#gridView'), rootMargin: '400px 0px' });
+  moreObs = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && cursor < S.visible.length) appendBatch(); }, { root: $('#gridView'), rootMargin: '600px 0px' });
+  moreObs.observe($('#sentinel'));
+
+  let qt;
+  $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; renderGallery(); }, 120); });
+  $('#newBtn').addEventListener('click', newCard);
+  $('#tagBtn').addEventListener('click', () => openTags('filter'));
+  $('#tagScrim').addEventListener('click', e => { if (e.target === e.currentTarget) closeTags(); });
+  $('#backBtn').addEventListener('click', showGrid);
+  $('#prevBtn').addEventListener('click', () => step(-1));
+  $('#nextBtn').addEventListener('click', () => step(1));
+  $('#editBtn').addEventListener('click', () => S.editing ? exitEdit() : enterEdit());
+
+  const menu = $('#menu'), mb = $('#menuBtn');
+  const setMenu = open => { menu.hidden = !open; mb.setAttribute('aria-expanded', String(open)); };
+  mb.addEventListener('click', e => { e.stopPropagation(); setMenu(menu.hidden); });
+  document.addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    setMenu(false);
+    const act = b.dataset.act;
+    if (act === 'new') newCard();
+    else if (act === 'seed') seedExamples();
+    else if (act === 'export') exportAll();
+    else if (act === 'import') { const f = $('#importFile'); f.value = ''; f.click(); }
+  });
+  $('#importFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) importFile(f); });
+
+  $('#scrim').addEventListener('click', e => { if (e.target === e.currentTarget) closeSheet(); });
+
+  const stage = $('#stage');
+  let sx = 0, sy = 0, tracking = false, swiped = false;
+  stage.addEventListener('pointerdown', e => {
+    if (S.editing || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    sx = e.clientX; sy = e.clientY; tracking = true;
+  });
+  stage.addEventListener('pointerup', e => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { swiped = true; step(dx < 0 ? 1 : -1); setTimeout(() => swiped = false, 80); }
+  });
+  stage.addEventListener('pointercancel', () => { tracking = false; });
+  stage.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && TP.mode) { if (TP.renaming) { TP.renaming = null; renderTagList(); } else closeTags(); return; }
+    if (e.key === 'Escape' && S.sheet) { closeSheet(); return; }
+    if ($('#cardView').hidden || S.sheet || S.editing || TP.mode) return;
+    if (/^(INPUT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)) return;
+    if (e.key === 'ArrowRight') step(1);
+    else if (e.key === 'ArrowLeft') step(-1);
+  });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
+  window.addEventListener('pagehide', flushAll);
+}
+
+async function boot() {
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  let list = [];
+  try { list = await Store.allCards(); } catch (e) { list = []; }
+  for (const c of list) { S.cards.set(c.id, c); addToIndex(c); }
+  resort();
+  $('#memNote').hidden = !Store.memory;
+  bindUI();
+  showGrid();
+}
+boot();
+})();
+</script>
+
+</body>
+</html>
